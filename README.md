@@ -15,7 +15,7 @@ Xintian Mao, Yiming Liu, Wei Shen, Qingli Li and Yan Wang
 ## Network Architecture
 <table>
   <tr>
-    <td> <img src = "https://github.com/INVOKERer/DeepRFT/blob/main/images/framework.png" width="1200"> </td>
+    <td> <img src = "images/framework.png" width="1200"> </td>
   </tr>
   <tr>
     <td><p align="center"><b>Overall Framework of DeepRFT</b></p></td>
@@ -56,7 +56,7 @@ python train.py
 Experiment for image deblurring.
 <table>
   <tr>
-    <td> <img src = "https://github.com/INVOKERer/DeepRFT/blob/main/images/psnr_params_flops.png" width="1200"> </td>
+    <td> <img src = "images/psnr_params_flops.png" width="1200"> </td>
   </tr>
   <tr>
     <td><p align="center"><b>Deblurring on GoPro Datasets.</b></p></td>
