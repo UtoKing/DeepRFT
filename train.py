@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = '5,6'
+os.environ["CUDA_VISIBLE_DEVICES"] = '6,7'
 
 torch.backends.cudnn.benchmark = True
 

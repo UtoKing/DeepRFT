@@ -172,7 +172,7 @@ class DeepRFT_flops(nn.Module):
     def __init__(self, num_res=8, inference=True):
         super(DeepRFT_flops, self).__init__()
         self.inference = inference
-        ResBlock = ResBlock_fft_bench
+        ResBlock = FFTAttentionBlock
         base_channel = 32
 
         self.Encoder = nn.ModuleList([
@@ -230,11 +230,11 @@ class DeepRFT_flops(nn.Module):
         res1 = self.Encoder[0](x_)
 
         z = self.feat_extract[1](res1)
-        z = self.FAM2(z, z2)
+        z = self.FAM2(z, z2) # C = 64
         res2 = self.Encoder[1](z)
 
         z = self.feat_extract[2](res2)
-        z = self.FAM1(z, z4)
+        z = self.FAM1(z, z4) # C = 128
         z = self.Encoder[2](z)
 
         z12 = F.interpolate(res1, scale_factor=0.5)
@@ -336,7 +336,7 @@ class DeepRFT(nn.Module):
         res1 = self.Encoder[0](x_)
 
         z = self.feat_extract[1](res1)
-        z = self.FAM2(z, z2)
+        z = self.FAM2(z, z2) # 64
         res2 = self.Encoder[1](z)
 
         z = self.feat_extract[2](res2)
@@ -347,9 +347,11 @@ class DeepRFT(nn.Module):
         z21 = F.interpolate(res2, scale_factor=2)
         z42 = F.interpolate(z, scale_factor=2)
         z41 = F.interpolate(z42, scale_factor=2)
+        
 
-        res2 = self.AFFs[1](z12, res2, z42)
-        res1 = self.AFFs[0](res1, z21, z41)
+        res2 = self.AFFs[1](z12, res2, z42) # 224, 64
+        res1 = self.AFFs[0](res1, z21, z41) # 224, 32
+        
 
         z = self.Decoder[0](z)
         z_ = self.ConvsOut[0](z)

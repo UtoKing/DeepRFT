@@ -29,6 +29,7 @@ class BasicConv(nn.Module):
     def forward(self, x):
         return self.main(x)
 
+
 class BasicConv_do(nn.Module):
     def __init__(self, in_channel, out_channel, kernel_size, stride=1, bias=False, norm=False, relu=True, transpose=False,
                  relu_method=nn.ReLU, groups=1, norm_method=nn.BatchNorm2d):
@@ -58,6 +59,7 @@ class BasicConv_do(nn.Module):
 
     def forward(self, x):
         return self.main(x)
+
 
 class BasicConv_do_eval(nn.Module):
     def __init__(self, in_channel, out_channel, kernel_size, stride, bias=False, norm=False, relu=True, transpose=False,
@@ -89,34 +91,43 @@ class BasicConv_do_eval(nn.Module):
     def forward(self, x):
         return self.main(x)
 
+
 class ResBlock(nn.Module):
     def __init__(self, out_channel):
         super(ResBlock, self).__init__()
         self.main = nn.Sequential(
-            BasicConv(out_channel, out_channel, kernel_size=3, stride=1, relu=True, norm=False),
-            BasicConv(out_channel, out_channel, kernel_size=3, stride=1, relu=False, norm=False)
+            BasicConv(out_channel, out_channel, kernel_size=3,
+                      stride=1, relu=True, norm=False),
+            BasicConv(out_channel, out_channel, kernel_size=3,
+                      stride=1, relu=False, norm=False)
         )
 
     def forward(self, x):
         return self.main(x) + x
+
 
 class ResBlock_do(nn.Module):
     def __init__(self, out_channel):
         super(ResBlock_do, self).__init__()
         self.main = nn.Sequential(
-            BasicConv_do(out_channel, out_channel, kernel_size=3, stride=1, relu=True),
-            BasicConv_do(out_channel, out_channel, kernel_size=3, stride=1, relu=False)
+            BasicConv_do(out_channel, out_channel,
+                         kernel_size=3, stride=1, relu=True),
+            BasicConv_do(out_channel, out_channel,
+                         kernel_size=3, stride=1, relu=False)
         )
 
     def forward(self, x):
         return self.main(x) + x
-    
+
+
 class ResBlock_do_eval(nn.Module):
     def __init__(self, out_channel):
         super(ResBlock_do_eval, self).__init__()
         self.main = nn.Sequential(
-            BasicConv_do_eval(out_channel, out_channel, kernel_size=3, stride=1, relu=True),
-            BasicConv_do_eval(out_channel, out_channel, kernel_size=3, stride=1, relu=False)
+            BasicConv_do_eval(out_channel, out_channel,
+                              kernel_size=3, stride=1, relu=True),
+            BasicConv_do_eval(out_channel, out_channel,
+                              kernel_size=3, stride=1, relu=False)
         )
 
     def forward(self, x):
@@ -127,15 +138,20 @@ class ResBlock_do_fft_bench(nn.Module):
     def __init__(self, out_channel, norm='backward'):
         super(ResBlock_do_fft_bench, self).__init__()
         self.main = nn.Sequential(
-            BasicConv_do(out_channel, out_channel, kernel_size=3, stride=1, relu=True),
-            BasicConv_do(out_channel, out_channel, kernel_size=3, stride=1, relu=False)
+            BasicConv_do(out_channel, out_channel,
+                         kernel_size=3, stride=1, relu=True),
+            BasicConv_do(out_channel, out_channel,
+                         kernel_size=3, stride=1, relu=False)
         )
         self.main_fft = nn.Sequential(
-            BasicConv_do(out_channel*2, out_channel*2, kernel_size=1, stride=1, relu=True),
-            BasicConv_do(out_channel*2, out_channel*2, kernel_size=1, stride=1, relu=False)
+            BasicConv_do(out_channel*2, out_channel*2,
+                         kernel_size=1, stride=1, relu=True),
+            BasicConv_do(out_channel*2, out_channel*2,
+                         kernel_size=1, stride=1, relu=False)
         )
         self.dim = out_channel
         self.norm = norm
+
     def forward(self, x):
         _, _, H, W = x.shape
         dim = 1
@@ -149,8 +165,9 @@ class ResBlock_do_fft_bench(nn.Module):
         y = torch.fft.irfft2(y, s=(H, W), norm=self.norm)
         return self.main(x) + x + y
 
+
 class ResBlock_fft_bench(nn.Module):
-    def __init__(self, n_feat, norm='backward'): # 'ortho'
+    def __init__(self, n_feat, norm='backward'):  # 'ortho'
         super(ResBlock_fft_bench, self).__init__()
         self.main = nn.Sequential(
             BasicConv(n_feat, n_feat, kernel_size=3, stride=1, relu=True),
@@ -162,6 +179,7 @@ class ResBlock_fft_bench(nn.Module):
         )
         self.dim = n_feat
         self.norm = norm
+
     def forward(self, x):
         _, _, H, W = x.shape
         dim = 1
@@ -174,19 +192,26 @@ class ResBlock_fft_bench(nn.Module):
         y = torch.complex(y_real, y_imag)
         y = torch.fft.irfft2(y, s=(H, W), norm=self.norm)
         return self.main(x) + x + y
+
+
 class ResBlock_do_fft_bench_eval(nn.Module):
     def __init__(self, out_channel, norm='backward'):
         super(ResBlock_do_fft_bench_eval, self).__init__()
         self.main = nn.Sequential(
-            BasicConv_do_eval(out_channel, out_channel, kernel_size=3, stride=1, relu=True),
-            BasicConv_do_eval(out_channel, out_channel, kernel_size=3, stride=1, relu=False)
+            BasicConv_do_eval(out_channel, out_channel,
+                              kernel_size=3, stride=1, relu=True),
+            BasicConv_do_eval(out_channel, out_channel,
+                              kernel_size=3, stride=1, relu=False)
         )
         self.main_fft = nn.Sequential(
-            BasicConv_do_eval(out_channel*2, out_channel*2, kernel_size=1, stride=1, relu=True),
-            BasicConv_do_eval(out_channel*2, out_channel*2, kernel_size=1, stride=1, relu=False)
+            BasicConv_do_eval(out_channel*2, out_channel*2,
+                              kernel_size=1, stride=1, relu=True),
+            BasicConv_do_eval(out_channel*2, out_channel*2,
+                              kernel_size=1, stride=1, relu=False)
         )
         self.dim = out_channel
         self.norm = norm
+
     def forward(self, x):
         _, _, H, W = x.shape
         dim = 1
@@ -199,6 +224,87 @@ class ResBlock_do_fft_bench_eval(nn.Module):
         y = torch.complex(y_real, y_imag)
         y = torch.fft.irfft2(y, s=(H, W), norm=self.norm)
         return self.main(x) + x + y
+
+
+class FrequencyEncoding(nn.Module):
+    def __init__(self, H, W, dropout=0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+        self.P = torch.zeros((1, 1, H, W))
+        X = torch.arange(H, dtype=torch.float32).reshape(-1, 1) * \
+            torch.arange(W, dtype=torch.float32).reshape(1, -1)
+        self.P = torch.sin(X*torch.pi/(H//2+1))
+
+    def forward(self, X):
+        X = X + self.P.to(X.device)
+        return self.dropout(X)
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, dropout=0.):
+        super().__init__()
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(dropout)
+        self.proj = nn.Linear(dim, dim)
+        self.multi_attn = nn.MultiheadAttention(
+            dim, num_heads=num_heads, dropout=dropout, add_bias_kv=qkv_bias, batch_first=True)
+
+    def forward(self, x):
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C //
+                                  self.num_heads).permute(2, 0, 1, 3, 4)
+        qkv = torch.flatten(qkv, -2, -1)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        return self.multi_attn(q, k, v)[0]
+
+
+class EmbeddingBlock(nn.Module):
+    def __init__(self, in_channel, out_channel, kernel_size=10):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.conv = nn.Conv2d(
+            in_channel, out_channel, kernel_size=self.kernel_size, stride=self.kernel_size)
+
+    def forward(self, x):
+        y = self.conv(x)
+        return y.flatten(-2)
+
+
+class FFTAttentionBlock(nn.Module):
+    def __init__(self, in_channel, height, width, embed_kernel_size=10, num_heads=8, dropout=0.):
+        super().__init__()
+        self.kernel_size = embed_kernel_size
+        self.height_out = (height+self.kernel_size)//self.kernel_size
+        self.width_out = (width+self.kernel_size)//(2*self.kernel_size)
+
+        embedding_dim = self.height_out*self.width_out
+        self.main = nn.Sequential(
+            nn.ReflectionPad2d((0, self.kernel_size, 0, self.kernel_size)),
+            FrequencyEncoding(height+self.kernel_size, width //
+                              2+1+self.kernel_size, dropout=dropout),
+            EmbeddingBlock(in_channel*2, in_channel*2, self.kernel_size),
+            MultiHeadAttention(embedding_dim, min(
+                self.height_out, self.width_out))
+        )
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        X = torch.fft.rfft2(x)
+        X_imag = X.imag
+        X_real = X.real
+        X = torch.cat([X_real, X_imag], 1)
+        y = self.main(X).reshape(B, C*2, self.height_out, self.width_out)
+        y = y.repeat_interleave(self.kernel_size, dim=2).repeat_interleave(
+            self.kernel_size, dim=3)
+        y = y[:, :, :H, :W//2+1]
+        y_real, y_imag = torch.chunk(y, 2, dim=1)
+        y = torch.complex(y_real, y_imag)
+        y = torch.fft.irfft2(y, s=(H, W))
+        return y+x
+
 
 def window_partitions(x, window_size):
     """
@@ -210,8 +316,10 @@ def window_partitions(x, window_size):
         windows: (num_windows*B, C, window_size, window_size)
     """
     B, C, H, W = x.shape
-    x = x.view(B, C, H // window_size, window_size, W // window_size, window_size)
-    windows = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, C, window_size, window_size)
+    x = x.view(B, C, H // window_size, window_size,
+               W // window_size, window_size)
+    windows = x.permute(0, 2, 4, 1, 3, 5).contiguous(
+    ).view(-1, C, window_size, window_size)
     return windows
 
 
@@ -232,9 +340,11 @@ def window_reverses(windows, window_size, H, W):
     # print(W // window_size)
     C = windows.shape[1]
     # print('C: ', C)
-    x = windows.view(-1, H // window_size, W // window_size, C, window_size, window_size)
+    x = windows.view(-1, H // window_size, W // window_size,
+                     C, window_size, window_size)
     x = x.permute(0, 3, 1, 4, 2, 5).contiguous().view(-1, C, H, W)
     return x
+
 
 def window_partitionx(x, window_size):
     _, _, H, W = x.shape
@@ -261,28 +371,34 @@ def window_partitionx(x, window_size):
         b_d = x_d.shape[0] + b_main
         return torch.cat([x_main, x_d], dim=0), [b_main, b_d]
 
+
 def window_reversex(windows, window_size, H, W, batch_list):
     h, w = window_size * (H // window_size), window_size * (W // window_size)
     x_main = window_reverses(windows[:batch_list[0], ...], window_size, h, w)
     B, C, _, _ = x_main.shape
     # print('windows: ', windows.shape)
     # print('batch_list: ', batch_list)
-    res = torch.zeros([B, C, H, W],device=windows.device)
+    res = torch.zeros([B, C, H, W], device=windows.device)
     res[:, :, :h, :w] = x_main
     if h == H and w == W:
         return res
     if h != H and w != W and len(batch_list) == 4:
-        x_dd = window_reverses(windows[batch_list[2]:, ...], window_size, window_size, window_size)
+        x_dd = window_reverses(
+            windows[batch_list[2]:, ...], window_size, window_size, window_size)
         res[:, :, h:, w:] = x_dd[:, :, h - H:, w - W:]
-        x_r = window_reverses(windows[batch_list[0]:batch_list[1], ...], window_size, h, window_size)
+        x_r = window_reverses(
+            windows[batch_list[0]:batch_list[1], ...], window_size, h, window_size)
         res[:, :, :h, w:] = x_r[:, :, :, w - W:]
-        x_d = window_reverses(windows[batch_list[1]:batch_list[2], ...], window_size, window_size, w)
+        x_d = window_reverses(
+            windows[batch_list[1]:batch_list[2], ...], window_size, window_size, w)
         res[:, :, h:, :w] = x_d[:, :, h - H:, :]
         return res
     if w != W and len(batch_list) == 2:
-        x_r = window_reverses(windows[batch_list[0]:batch_list[1], ...], window_size, h, window_size)
+        x_r = window_reverses(
+            windows[batch_list[0]:batch_list[1], ...], window_size, h, window_size)
         res[:, :, :h, w:] = x_r[:, :, :, w - W:]
     if h != H and len(batch_list) == 2:
-        x_d = window_reverses(windows[batch_list[0]:batch_list[1], ...], window_size, window_size, w)
+        x_d = window_reverses(
+            windows[batch_list[0]:batch_list[1], ...], window_size, window_size, w)
         res[:, :, h:, :w] = x_d[:, :, h - H:, :]
     return res
