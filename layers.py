@@ -300,6 +300,7 @@ class FFTAttentionBlock(nn.Module):
         y = y.repeat_interleave(self.kernel_size, dim=2).repeat_interleave(
             self.kernel_size, dim=3)
         y = y[:, :, :H, :W//2+1]
+        y = x*y
         y_real, y_imag = torch.chunk(y, 2, dim=1)
         y = torch.complex(y_real, y_imag)
         y = torch.fft.irfft2(y, s=(H, W))
