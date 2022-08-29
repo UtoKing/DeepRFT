@@ -1,6 +1,7 @@
 import argparse
 from torch.utils.tensorboard import SummaryWriter
 import kornia
+from dataset_RGB import DataLoaderTrain, DataLoaderVal
 from get_parameter_number import get_parameter_number
 from tqdm import tqdm
 from warmup_scheduler import GradualWarmupScheduler
@@ -16,6 +17,8 @@ import torch.optim as optim
 import torch.nn as nn
 import torch
 import os
+from sklearn.model_selection import train_test_split
+
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = '5,6,7'
 
@@ -123,11 +126,21 @@ criterion_char = losses.CharbonnierLoss()
 criterion_edge = losses.EdgeLoss()
 criterion_fft = losses.fftLoss()
 ######### DataLoaders ###########
-train_dataset = get_training_data(train_dir, {'patch_size': patch_size})
+
+train_test_list = os.listdir(os.path.join(train_dir, "blur"))
+train_list, test_list = train_test_split(
+    train_test_list, shuffle=True, train_size=0.8)
+
+train_dataset = DataLoaderTrain(
+    train_dir, train_list, {'patch_size': patch_size})
+
+# train_dataset = get_training_data(train_dir, {'patch_size': patch_size})
 train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size,
                           shuffle=True, num_workers=8, drop_last=False, pin_memory=True)
 
-val_dataset = get_validation_data(val_dir, {'patch_size': patch_size})
+val_dataset = DataLoaderVal(val_dir, test_list, {'patch_size': patch_size})
+
+# val_dataset = get_validation_data(val_dir, {'patch_size': patch_size})
 val_loader = DataLoader(dataset=val_dataset, batch_size=16,
                         shuffle=False, num_workers=8, drop_last=False, pin_memory=True)
 

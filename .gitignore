@@ -3,5 +3,6 @@
 /Datasets/
 /.vscode
 /checkpoints
-/utils/__pycache__/
+utils/__pycache__/
 *.ipynb
+/results/
