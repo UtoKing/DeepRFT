@@ -4,4 +4,4 @@
 /.vscode
 /checkpoints
 *.ipynb
-/results/
+results/*
