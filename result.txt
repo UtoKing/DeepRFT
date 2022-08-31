@@ -1,0 +1,9 @@
+Total:  408638870
+Trainable:  408581117
+
+
+Let's use 4 GPUs!
+
+
+===> Start Epoch 1 End Epoch 1501
+===> Loading datasets

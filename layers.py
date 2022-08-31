@@ -230,38 +230,60 @@ class FrequencyEncoding(nn.Module):
     def __init__(self, H, W, dropout=0.1):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
-        self.P = torch.zeros((1, 1, H, W))
-        X = torch.arange(H, dtype=torch.float32).reshape(-1, 1) * \
-            torch.arange(W, dtype=torch.float32).reshape(1, -1)
-        self.P = torch.sin(X*torch.pi/(H//2+1))
+        x = torch.arange(H, dtype=torch.float32).reshape(-1, 1)
+        y = torch.arange(W, dtype=torch.float32).reshape(1, -1)
+        self.P = torch.sin(x*torch.pi/(H+1))*torch.cos(y*torch.pi/(W+1))
+        self.P = self.P.reshape(1, 1, H, W)
 
     def forward(self, X):
         X = X + self.P.to(X.device)
         return self.dropout(X)
 
 
-class MultiHeadAttention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, dropout=0.):
-        super().__init__()
+class Attention(nn.Module):
+    def __init__(self,
+                 dim,   # 输入token的dim
+                 num_heads=8,
+                 qkv_bias=False,
+                 qk_scale=None,
+                 attn_drop_ratio=0.,
+                 proj_drop_ratio=0.):
+        super(Attention, self).__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(dropout)
+        self.attn_drop = nn.Dropout(attn_drop_ratio)
         self.proj = nn.Linear(dim, dim)
-        self.multi_attn = nn.MultiheadAttention(
-            dim, num_heads=num_heads, dropout=dropout, add_bias_kv=qkv_bias, batch_first=True)
+        self.proj_drop = nn.Dropout(proj_drop_ratio)
 
     def forward(self, x):
+        # [batch_size, num_patches + 1, total_embed_dim]
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C //
-                                  self.num_heads).permute(2, 0, 1, 3, 4)
-        qkv = torch.flatten(qkv, -2, -1)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-        return self.multi_attn(q, k, v)[0]
+
+        # qkv(): -> [batch_size, num_patches + 1, 3 * total_embed_dim]
+        # reshape: -> [batch_size, num_patches + 1, 3, num_heads, embed_dim_per_head]
+        # permute: -> [3, batch_size, num_heads, num_patches + 1, embed_dim_per_head]
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        # [batch_size, num_heads, num_patches + 1, embed_dim_per_head]
+        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+
+        # transpose: -> [batch_size, num_heads, embed_dim_per_head, num_patches + 1]
+        # @: multiply -> [batch_size, num_heads, num_patches + 1, num_patches + 1]
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        # @: multiply -> [batch_size, num_heads, num_patches + 1, embed_dim_per_head]
+        # transpose: -> [batch_size, num_patches + 1, num_heads, embed_dim_per_head]
+        # reshape: -> [batch_size, num_patches + 1, total_embed_dim]
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
 
 
-class EmbeddingBlock(nn.Module):
+class EmbedBlock(nn.Module):
     def __init__(self, in_channel, out_channel, kernel_size=10):
         super().__init__()
         self.kernel_size = kernel_size
@@ -278,20 +300,26 @@ class FFTAttentionBlock(nn.Module):
         super().__init__()
         self.kernel_size = embed_kernel_size
         self.height_out = (height+self.kernel_size)//self.kernel_size
-        self.width_out = (width+self.kernel_size)//(2*self.kernel_size)
+        self.width_out = (width//2+1)//self.kernel_size+1
 
         embedding_dim = self.height_out*self.width_out
+        
+        self.batch_norm=nn.BatchNorm2d(in_channel)
+
         self.main = nn.Sequential(
             nn.ReflectionPad2d((0, self.kernel_size, 0, self.kernel_size)),
+            nn.BatchNorm2d(in_channel*2),
             FrequencyEncoding(height+self.kernel_size, width //
                               2+1+self.kernel_size, dropout=dropout),
-            EmbeddingBlock(in_channel*2, in_channel*2, self.kernel_size),
-            MultiHeadAttention(embedding_dim, min(
-                self.height_out, self.width_out))
+            EmbedBlock(in_channel*2, in_channel*2, self.kernel_size),
+            Attention(embedding_dim, min(
+                self.height_out, self.width_out)),
+            nn.BatchNorm1d(in_channel*2)
         )
 
     def forward(self, x):
         B, C, H, W = x.shape
+        # x=self.batch_norm(x)
         X = torch.fft.rfft2(x)
         X_imag = X.imag
         X_real = X.real
@@ -300,7 +328,7 @@ class FFTAttentionBlock(nn.Module):
         y = y.repeat_interleave(self.kernel_size, dim=2).repeat_interleave(
             self.kernel_size, dim=3)
         y = y[:, :, :H, :W//2+1]
-        y = x * y
+        y = X * y
         y_real, y_imag = torch.chunk(y, 2, dim=1)
         y = torch.complex(y_real, y_imag)
         y = torch.fft.irfft2(y, s=(H, W))

@@ -20,16 +20,16 @@ import os
 from sklearn.model_selection import train_test_split
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = '5,6,7'
+os.environ["CUDA_VISIBLE_DEVICES"] = '6,7'
 
 torch.backends.cudnn.benchmark = True
 
 
 ######### Set Seeds ###########
-random.seed(1234)
-np.random.seed(1234)
-torch.manual_seed(1234)
-torch.cuda.manual_seed_all(1234)
+# random.seed(1234)
+# np.random.seed(1234)
+# torch.manual_seed(1234)
+# torch.cuda.manual_seed_all(1234)
 
 start_epoch = 1
 
@@ -71,7 +71,40 @@ start_lr = 2e-4
 end_lr = 1e-6
 
 ######### Model ###########
-model_restoration = myNet()
+model_restoration = myNet(num_res=4)
+
+def init_weights(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1 or classname.find('Bilinear') != -1:
+        nn.init.kaiming_uniform_(a=2, mode='fan_in', nonlinearity='leaky_relu', tensor=m.weight)
+        if m.bias is not None: nn.init.zeros_(tensor=m.bias)
+
+    elif classname.find('Conv') != -1 and classname not in ["DOConv2d","BasicConv_do"]:
+        nn.init.kaiming_uniform_(a=2, mode='fan_in', nonlinearity='leaky_relu', tensor=m.weight)
+        if m.bias is not None: nn.init.zeros_(tensor=m.bias)
+
+    elif classname.find('BatchNorm') != -1 or classname.find('GroupNorm') != -1 or classname.find('LayerNorm') != -1:
+        nn.init.uniform_(a=0, b=1, tensor=m.weight)
+        nn.init.zeros_(tensor=m.bias)
+
+    elif classname.find('Cell') != -1:
+        nn.init.xavier_uniform_(gain=1, tensor=m.weight_hh)
+        nn.init.xavier_uniform_(gain=1, tensor=m.weight_ih)
+        nn.init.ones_(tensor=m.bias_hh)
+        nn.init.ones_(tensor=m.bias_ih)
+
+    elif classname.find('RNN') != -1 or classname.find('LSTM') != -1 or classname.find('GRU') != -1:
+        for w in m.all_weights:
+            nn.init.xavier_uniform_(gain=1, tensor=w[2].data)
+            nn.init.xavier_uniform_(gain=1, tensor=w[3].data)
+            nn.init.ones_(tensor=w[0].data)
+            nn.init.ones_(tensor=w[1].data)
+
+    if classname.find('Embedding') != -1:
+        nn.init.kaiming_uniform_(a=2, mode='fan_in', nonlinearity='leaky_relu', tensor=m.weight)
+
+model_restoration.apply(init_weights)
+
 
 # print number of model
 get_parameter_number(model_restoration)
@@ -138,11 +171,13 @@ train_dataset = DataLoaderTrain(
 train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size,
                           shuffle=True, num_workers=8, drop_last=False, pin_memory=True)
 
-val_dataset = DataLoaderVal(val_dir, test_list, {'patch_size': patch_size})
+val_dataset = DataLoaderVal(train_dir, test_list, {'patch_size': patch_size})
 
 # val_dataset = get_validation_data(val_dir, {'patch_size': patch_size})
 val_loader = DataLoader(dataset=val_dataset, batch_size=16,
                         shuffle=False, num_workers=8, drop_last=False, pin_memory=True)
+
+print("===> Training Size "+str(len(train_dataset))+" Test Size "+str(len(val_dataset)))
 
 print('===> Start Epoch {} End Epoch {}'.format(start_epoch, num_epochs + 1))
 print('===> Loading datasets')
@@ -221,7 +256,7 @@ for epoch in range(start_epoch, num_epochs + 1):
 
     print("------------------------------------------------------------------")
     print("Epoch: {}\tTime: {:.4f}\tLoss: {:.4f}\tLearningRate {:.6f}".format(
-        epoch, time.time()-epoch_start_time, epoch_loss, scheduler.get_lr()[0]))
+        epoch, time.time()-epoch_start_time, epoch_loss, scheduler.get_last_lr()[0]))
     print("------------------------------------------------------------------")
 
     torch.save({'epoch': epoch,
