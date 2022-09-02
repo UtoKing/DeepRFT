@@ -1,4 +1,5 @@
 import argparse
+from cmath import isnan
 from torch.utils.tensorboard import SummaryWriter
 import kornia
 from dataset_RGB import DataLoaderTrain, DataLoaderVal
@@ -26,10 +27,10 @@ torch.backends.cudnn.benchmark = True
 
 
 ######### Set Seeds ###########
-# random.seed(1234)
-# np.random.seed(1234)
-# torch.manual_seed(1234)
-# torch.cuda.manual_seed_all(1234)
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
 
 start_epoch = 1
 
@@ -79,7 +80,7 @@ def init_weights(m):
         nn.init.kaiming_uniform_(a=2, mode='fan_in', nonlinearity='leaky_relu', tensor=m.weight)
         if m.bias is not None: nn.init.zeros_(tensor=m.bias)
 
-    elif classname.find('Conv') != -1 and classname not in ["DOConv2d","BasicConv_do"]:
+    elif classname.find('Conv') != -1 and classname not in ["DOConv2d","BasicConv_do","BasicConv"]:
         nn.init.kaiming_uniform_(a=2, mode='fan_in', nonlinearity='leaky_relu', tensor=m.weight)
         if m.bias is not None: nn.init.zeros_(tensor=m.bias)
 
@@ -231,8 +232,11 @@ for epoch in range(start_epoch, num_epochs + 1):
             with torch.no_grad():
                 restored = model_restoration(input_)
 
-            for res, tar in zip(restored[0], target):
-                psnr_val_rgb.append(utils.torchPSNR(res, tar))
+            for res, tar,file_name in zip(restored[0], target,data_val[2]):
+                if torch.isnan(res).any():
+                    print(file_name)
+                psnr_mean=utils.torchPSNR(res, tar)
+                psnr_val_rgb.append(psnr_mean)
 
         psnr_val_rgb = torch.stack(psnr_val_rgb).mean().item()
         writer.add_scalar('val/psnr', psnr_val_rgb, epoch)

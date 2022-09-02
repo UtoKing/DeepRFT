@@ -308,13 +308,18 @@ class FFTAttentionBlock(nn.Module):
 
         self.main = nn.Sequential(
             nn.ReflectionPad2d((0, self.kernel_size, 0, self.kernel_size)),
-            nn.BatchNorm2d(in_channel*2),
+            # nn.BatchNorm2d(in_channel*2),
             FrequencyEncoding(height+self.kernel_size, width //
                               2+1+self.kernel_size, dropout=dropout),
             EmbedBlock(in_channel*2, in_channel*2, self.kernel_size),
             Attention(embedding_dim, min(
                 self.height_out, self.width_out)),
             nn.BatchNorm1d(in_channel*2)
+        )
+        
+        self.main_x = nn.Sequential(
+            BasicConv(in_channel, in_channel, kernel_size=3, stride=1, relu=True),
+            BasicConv(in_channel, in_channel, kernel_size=3, stride=1, relu=False)
         )
 
     def forward(self, x):
@@ -332,7 +337,7 @@ class FFTAttentionBlock(nn.Module):
         y_real, y_imag = torch.chunk(y, 2, dim=1)
         y = torch.complex(y_real, y_imag)
         y = torch.fft.irfft2(y, s=(H, W))
-        return y+x
+        return y+x+self.main_x(x)
 
 
 def window_partitions(x, window_size):
