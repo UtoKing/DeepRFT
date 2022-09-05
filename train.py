@@ -7,7 +7,7 @@ from get_parameter_number import get_parameter_number
 from tqdm import tqdm
 from warmup_scheduler import GradualWarmupScheduler
 import losses
-from DeepRFT_MIMO import DeepRFT as myNet
+from DeepFFTAttention import DeepFFTAttention as myNet
 from data_RGB import get_training_data, get_validation_data
 import utils
 import numpy as np
@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch
 import os
 from sklearn.model_selection import train_test_split
+from datetime import datetime
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = '6,7'
@@ -58,7 +59,7 @@ mode = args.mode
 session = args.session
 patch_size = args.patch_size
 
-model_dir = os.path.join(args.model_save_dir, mode, 'models',  session)
+model_dir = os.path.join(args.model_save_dir, mode+"_" + 'models', session)
 utils.mkdir(model_dir)
 
 train_dir = args.train_dir
@@ -68,44 +69,11 @@ num_epochs = args.num_epochs
 batch_size = args.batch_size
 val_epochs = args.val_epochs
 
-start_lr = 2e-4
-end_lr = 1e-6
+start_lr = 1e-4
+end_lr = 5e-7
 
 ######### Model ###########
 model_restoration = myNet(num_res=4)
-
-def init_weights(m):
-    classname = m.__class__.__name__
-    if classname.find('Linear') != -1 or classname.find('Bilinear') != -1:
-        nn.init.kaiming_uniform_(a=2, mode='fan_in', nonlinearity='leaky_relu', tensor=m.weight)
-        if m.bias is not None: nn.init.zeros_(tensor=m.bias)
-
-    elif classname.find('Conv') != -1 and classname not in ["DOConv2d","BasicConv_do","BasicConv"]:
-        nn.init.kaiming_uniform_(a=2, mode='fan_in', nonlinearity='leaky_relu', tensor=m.weight)
-        if m.bias is not None: nn.init.zeros_(tensor=m.bias)
-
-    elif classname.find('BatchNorm') != -1 or classname.find('GroupNorm') != -1 or classname.find('LayerNorm') != -1:
-        nn.init.uniform_(a=0, b=1, tensor=m.weight)
-        nn.init.zeros_(tensor=m.bias)
-
-    elif classname.find('Cell') != -1:
-        nn.init.xavier_uniform_(gain=1, tensor=m.weight_hh)
-        nn.init.xavier_uniform_(gain=1, tensor=m.weight_ih)
-        nn.init.ones_(tensor=m.bias_hh)
-        nn.init.ones_(tensor=m.bias_ih)
-
-    elif classname.find('RNN') != -1 or classname.find('LSTM') != -1 or classname.find('GRU') != -1:
-        for w in m.all_weights:
-            nn.init.xavier_uniform_(gain=1, tensor=w[2].data)
-            nn.init.xavier_uniform_(gain=1, tensor=w[3].data)
-            nn.init.ones_(tensor=w[0].data)
-            nn.init.ones_(tensor=w[1].data)
-
-    if classname.find('Embedding') != -1:
-        nn.init.kaiming_uniform_(a=2, mode='fan_in', nonlinearity='leaky_relu', tensor=m.weight)
-
-model_restoration.apply(init_weights)
-
 
 # print number of model
 get_parameter_number(model_restoration)
@@ -178,14 +146,17 @@ val_dataset = DataLoaderVal(train_dir, test_list, {'patch_size': patch_size})
 val_loader = DataLoader(dataset=val_dataset, batch_size=16,
                         shuffle=False, num_workers=8, drop_last=False, pin_memory=True)
 
-print("===> Training Size "+str(len(train_dataset))+" Test Size "+str(len(val_dataset)))
+print("===> Training Size "+str(len(train_dataset)) +
+      " Test Size "+str(len(val_dataset)))
 
 print('===> Start Epoch {} End Epoch {}'.format(start_epoch, num_epochs + 1))
 print('===> Loading datasets')
 
 best_psnr = 0
 best_epoch = 0
-writer = SummaryWriter(model_dir)
+current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+writer = SummaryWriter(os.path.join(
+    args.model_save_dir, mode+"_"+'models', session, current_time))
 iter = 0
 
 for epoch in range(start_epoch, num_epochs + 1):
@@ -232,10 +203,10 @@ for epoch in range(start_epoch, num_epochs + 1):
             with torch.no_grad():
                 restored = model_restoration(input_)
 
-            for res, tar,file_name in zip(restored[0], target,data_val[2]):
+            for res, tar, file_name in zip(restored[0], target, data_val[2]):
                 if torch.isnan(res).any():
                     print(file_name)
-                psnr_mean=utils.torchPSNR(res, tar)
+                psnr_mean = utils.torchPSNR(res, tar)
                 psnr_val_rgb.append(psnr_mean)
 
         psnr_val_rgb = torch.stack(psnr_val_rgb).mean().item()

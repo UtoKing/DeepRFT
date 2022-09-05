@@ -1,4 +1,6 @@
+from select import select
 from doconv_pytorch import *
+from torch import nn
 
 
 class BasicConv(nn.Module):
@@ -226,7 +228,7 @@ class ResBlock_do_fft_bench_eval(nn.Module):
         return self.main(x) + x + y
 
 
-class FrequencyEncoding(nn.Module):
+class FrequencyEncodingLayer(nn.Module):
     def __init__(self, H, W, dropout=0.1):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
@@ -235,12 +237,12 @@ class FrequencyEncoding(nn.Module):
         self.P = torch.sin(x*torch.pi/(H+1))*torch.cos(y*torch.pi/(W+1))
         self.P = self.P.reshape(1, 1, H, W)
 
-    def forward(self, X):
-        X = X + self.P.to(X.device)
-        return self.dropout(X)
+    def forward(self, x):
+        x = x + self.P.to(x.device)
+        return self.dropout(x)
 
 
-class Attention(nn.Module):
+class AttentionLayer(nn.Module):
     def __init__(self,
                  dim,   # 输入token的dim
                  num_heads=8,
@@ -248,7 +250,7 @@ class Attention(nn.Module):
                  qk_scale=None,
                  attn_drop_ratio=0.,
                  proj_drop_ratio=0.):
-        super(Attention, self).__init__()
+        super(AttentionLayer, self).__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
@@ -259,14 +261,16 @@ class Attention(nn.Module):
 
     def forward(self, x):
         # [batch_size, num_patches + 1, total_embed_dim]
-        B, N, C = x.shape
+        B, N, D = x.shape
 
         # qkv(): -> [batch_size, num_patches + 1, 3 * total_embed_dim]
         # reshape: -> [batch_size, num_patches + 1, 3, num_heads, embed_dim_per_head]
         # permute: -> [3, batch_size, num_heads, num_patches + 1, embed_dim_per_head]
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, D //
+                                  self.num_heads).permute(2, 0, 3, 1, 4)
         # [batch_size, num_heads, num_patches + 1, embed_dim_per_head]
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        # make torchscript happy (cannot use tensor as tuple)
+        q, k, v = qkv[0], qkv[1], qkv[2]
 
         # transpose: -> [batch_size, num_heads, embed_dim_per_head, num_patches + 1]
         # @: multiply -> [batch_size, num_heads, num_patches + 1, num_patches + 1]
@@ -277,63 +281,78 @@ class Attention(nn.Module):
         # @: multiply -> [batch_size, num_heads, num_patches + 1, embed_dim_per_head]
         # transpose: -> [batch_size, num_patches + 1, num_heads, embed_dim_per_head]
         # reshape: -> [batch_size, num_patches + 1, total_embed_dim]
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = (attn @ v).transpose(1, 2).reshape(B, N, D)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
 
 
-class EmbedBlock(nn.Module):
-    def __init__(self, in_channel, out_channel, kernel_size=10):
+class SELayer(nn.Module):
+    def __init__(self, channel, reduction=16):
         super().__init__()
-        self.kernel_size = kernel_size
-        self.conv = nn.Conv2d(
-            in_channel, out_channel, kernel_size=self.kernel_size, stride=self.kernel_size)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel//reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel//reduction, channel, bias=False),
+            nn.Sigmoid()
+        )
 
     def forward(self, x):
-        y = self.conv(x)
-        return y.flatten(-2)
+        b, c, _, _ = x.shape
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x*y
+
+
+class GlobalFFTAttention(nn.Module):
+    def __init__(self, in_channel, reduction=8):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels=in_channel,
+                               out_channels=1, kernel_size=1)
+        self.transformer = nn.Sequential(
+            nn.Conv2d(in_channel, in_channel//reduction, kernel_size=1),
+            nn.LayerNorm([in_channel//reduction, 1, 1]),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channel//reduction, in_channel, kernel_size=1),
+        )
+
+    def context_modelling(self, x):
+        x1 = x.flatten(-2)  # N, C, H*W
+        x2 = self.conv1(x).flatten(-2).transpose(-2, -1)  # N, H*W, 1
+        y = torch.bmm(x1, x2).unsqueeze(-1)  # N, C, 1, 1
+        return y
+
+    def forward(self, x):
+        return x+self.transformer(self.context_modelling(x))
 
 
 class FFTAttentionBlock(nn.Module):
-    def __init__(self, in_channel, height, width, embed_kernel_size=10, num_heads=8, dropout=0.):
+    def __init__(self, in_channel, height, width, dropout=0.):
         super().__init__()
-        self.kernel_size = embed_kernel_size
-        self.height_out = (height+self.kernel_size)//self.kernel_size
-        self.width_out = (width//2+1)//self.kernel_size+1
-
-        embedding_dim = self.height_out*self.width_out
-        
-        self.batch_norm=nn.BatchNorm2d(in_channel)
 
         self.main = nn.Sequential(
-            nn.ReflectionPad2d((0, self.kernel_size, 0, self.kernel_size)),
-            # nn.BatchNorm2d(in_channel*2),
-            FrequencyEncoding(height+self.kernel_size, width //
-                              2+1+self.kernel_size, dropout=dropout),
-            EmbedBlock(in_channel*2, in_channel*2, self.kernel_size),
-            Attention(embedding_dim, min(
-                self.height_out, self.width_out)),
-            nn.BatchNorm1d(in_channel*2)
+            # nn.ReflectionPad2d((0, self.kernel_size, 0, self.kernel_size)),
+            FrequencyEncodingLayer(height, width // 2+1, dropout=dropout),
+            SELayer(in_channel*2, reduction=8),
+            # EmbedLayer(in_channel*2, in_channel*2, self.kernel_size),
+            GlobalFFTAttention(in_channel*2),
         )
-        
+
         self.main_x = nn.Sequential(
-            BasicConv(in_channel, in_channel, kernel_size=3, stride=1, relu=True),
-            BasicConv(in_channel, in_channel, kernel_size=3, stride=1, relu=False)
+            BasicConv(in_channel, in_channel,
+                      kernel_size=3, stride=1, relu=True),
+            BasicConv(in_channel, in_channel,
+                      kernel_size=3, stride=1, relu=False)
         )
 
     def forward(self, x):
-        B, C, H, W = x.shape
-        # x=self.batch_norm(x)
+        _, _, H, W = x.shape
         X = torch.fft.rfft2(x)
         X_imag = X.imag
         X_real = X.real
         X = torch.cat([X_real, X_imag], 1)
-        y = self.main(X).reshape(B, C*2, self.height_out, self.width_out)
-        y = y.repeat_interleave(self.kernel_size, dim=2).repeat_interleave(
-            self.kernel_size, dim=3)
-        y = y[:, :, :H, :W//2+1]
-        y = X * y
+        y = self.main(X)
         y_real, y_imag = torch.chunk(y, 2, dim=1)
         y = torch.complex(y_real, y_imag)
         y = torch.fft.irfft2(y, s=(H, W))

@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 import utils
 from data_RGB import get_test_data
-from DeepRFT_MIMO import DeepRFT as mynet
+from DeepFFTAttention import DeepFFTAttention as mynet
 from skimage import img_as_ubyte
 from get_parameter_number import get_parameter_number
 from tqdm import tqdm
@@ -20,7 +20,7 @@ parser.add_argument('--target_dir', default='./Datasets/GoPro/test/sharp', type=
 parser.add_argument('--output_dir', default='./results/DeepRFT/GoPro', type=str, help='Directory of validation images')
 parser.add_argument('--weights', default='./checkpoints/DeepRFT/model_GoPro.pth', type=str, help='Path to weights')
 parser.add_argument('--get_psnr', default=False, type=bool, help='PSNR')
-parser.add_argument('--gpus', default='6', type=str, help='CUDA_VISIBLE_DEVICES')
+parser.add_argument('--gpus', default='0', type=str, help='CUDA_VISIBLE_DEVICES')
 parser.add_argument('--save_result', default=False, type=bool, help='save result')
 parser.add_argument('--win_size', default=256, type=int, help='window size, [GoPro, HIDE, RealBlur]=256, [DPDD]=512')
 parser.add_argument('--num_res', default=8, type=int, help='num of resblocks, [Small, Med, PLus]=[4, 8, 20]')
@@ -31,11 +31,12 @@ get_psnr = args.get_psnr
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpus
 # model_restoration = mynet()
-model_restoration = mynet(num_res=args.num_res, inference=True)
+model_restoration = mynet(num_res=args.num_res)
 # print number of model
 get_parameter_number(model_restoration)
 # utils.load_checkpoint(model_restoration, args.weights)
-utils.load_checkpoint_compress_doconv(model_restoration, args.weights)
+model_restoration=torch.nn.DataParallel(model_restoration,device_ids=[0])
+model_restoration.load_state_dict(torch.load("checkpoints/Deblurring/models/DeepRFT_gopro/model_best.pth")["state_dict"])
 print("===>Testing using weights: ", args.weights)
 model_restoration.cuda()
 model_restoration = nn.DataParallel(model_restoration)
@@ -63,6 +64,7 @@ with torch.no_grad():
         filenames = data_test[1]
         input_re, batch_list = window_partitionx(input_, win)
         restored = model_restoration(input_re)
+        print(restored[0].shape)
         restored = window_reversex(restored, win, Hx, Wx, batch_list)
 
         restored = torch.clamp(restored, 0, 1)
